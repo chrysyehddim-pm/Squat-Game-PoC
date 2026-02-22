@@ -1,5 +1,5 @@
 // ==========================================
-// 0. 初始化 Firebase (維持原有模組化寫法)
+// 0. 初始化 Firebase
 // ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -48,16 +48,16 @@ const imgCoin = document.getElementById('img-coin');
 let userData = { name: '', age: 0 }; 
 let score = 0;
 let repsCount = 0; 
-let isSquatting = false; // 是否進入「蹲下」狀態
-let isReadyToScore = false; // 是否完成蹲下，正準備「起身」得分
+let isReadyToScore = false; 
 let showEffectTimer = 0; 
-let timeLeft = 15; // 🚀 秒數縮短為 15 秒
+let timeLeft = 15; 
 let gameActive = false; 
-let isTeachingMode = false; // 🚀 教學模式狀態
-let countdownNumber = 3;    // 🚀 倒數 321
+let isTeachingMode = false; 
+let countdownNumber = 0;    
 let lastEffectX = 0;
 let minKneeAngle = 360; 
 let maxKneeAngle = 0;   
+let isCameraStarted = false; // 🚀 修正：補上此變數定義
 
 // ==========================================
 // 3. 智慧語音引擎
@@ -79,7 +79,7 @@ function speakMsg(text, forceInterrupt = false) {
 }
 
 // ==========================================
-// 4. 核心邏輯 (包含教學與倒數)
+// 4. 核心邏輯
 // ==========================================
 function switchScreen(screenToShow) {
     screenLogin.classList.add('hidden');
@@ -111,7 +111,9 @@ pose.setOptions({
 });
 
 pose.onResults((results) => {
-    resizeCanvas(); 
+    if (!screenGame.classList.contains('hidden')) {
+        resizeCanvas(); 
+    }
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
     
@@ -125,33 +127,33 @@ pose.onResults((results) => {
         const ankle = results.poseLandmarks[27];
         const shoulder = results.poseLandmarks[11];
 
-        // 磚塊位置
+        // 磚塊位置邏輯
         const blockWidth = 100;
         const blockHeight = 100;
         let blockX = (nose.x * canvasElement.width) - (blockWidth / 2);
         const blockY = 50; 
 
-        if (imgBrick && imgBrick.complete && imgBrick.naturalHeight > 0) {
+        if (imgBrick && imgBrick.complete) {
             canvasCtx.drawImage(imgBrick, blockX, blockY, blockWidth, blockHeight);
         }
 
-        // --- 🚀 模式 1：教學模式 (正確動作後進入倒數) ---
+        // --- 🚀 模式 1：教學模式 ---
         if (isTeachingMode) {
             if (hip && knee && ankle && hip.visibility > 0.5) {
                 const kneeAngle = calculateAngle(hip, knee, ankle);
-                statusBar.innerText = '請先試著蹲到 110 度以下...';
+                statusBar.innerText = '教學中：請先試著蹲到 110 度以下...';
                 
                 if (kneeAngle < 110) {
                     isTeachingMode = false;
-                    speakMsg("很好，準備開始，3... 2... 1...", true);
+                    speakMsg("很好，準備開始", true);
                     startCountdown();
                 }
             }
         }
 
         // --- 🚀 模式 2：倒數顯示 ---
-        if (!gameActive && !isTeachingMode && countdownNumber > 0 && countdownNumber <= 3) {
-            canvasCtx.fillStyle = 'rgba(0,0,0,0.5)';
+        if (!gameActive && !isTeachingMode && countdownNumber > 0) {
+            canvasCtx.fillStyle = 'rgba(0,0,0,0.6)';
             canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.fillStyle = '#FF9800';
             canvasCtx.font = 'bold 150px Arial';
@@ -173,21 +175,14 @@ pose.onResults((results) => {
                     noseCanvasY > blockY && noseCanvasY < blockY + blockHeight
                 );
 
-                if (kneeAngle > 40 && kneeAngle <= 180) {
-                    if (kneeAngle < minKneeAngle) minKneeAngle = kneeAngle;
-                    if (kneeAngle > maxKneeAngle) maxKneeAngle = kneeAngle;
-                }
-                
-                // 🚀 嚴格判定邏輯：必須先「深蹲到位」
                 if (kneeAngle < 110 && hipAngle < 130 && !isReadyToScore) {
-                    isReadyToScore = true; // 鎖定狀態：已經蹲夠深了
+                    isReadyToScore = true;
                     statusBar.innerText = '到位了！起立頂磚塊！';
                     speakMsg("蹲得好，請起立"); 
                 }
                 
-                // 🚀 必須「站得夠直 (155度)」且「頂到磚塊」且「之前有深蹲到位」
                 if (kneeAngle > 155 && isTouchingBrick && isReadyToScore) {
-                    isReadyToScore = false; // 🚀 重要：得分後重置，強迫下一次必須重新深蹲
+                    isReadyToScore = false; 
                     repsCount++;
                     score += 10;
                     scoreElement.innerText = score;
@@ -196,6 +191,7 @@ pose.onResults((results) => {
                     lastEffectX = blockX; 
                     showEffectTimer = 40; 
                     speakMsg("得分", true); 
+                    if (kneeAngle < minKneeAngle) minKneeAngle = kneeAngle;
                 }
             }
         }
@@ -203,13 +199,10 @@ pose.onResults((results) => {
         // 金幣動畫
         if (showEffectTimer > 0) {
             const progress = 1 - (showEffectTimer / 40); 
-            const easeOut = Math.sin(progress * Math.PI / 2);
-            const floatY = blockY - (easeOut * 80); 
-            const alpha = showEffectTimer < 10 ? (showEffectTimer / 10) : 1;
+            const floatY = blockY - (progress * 100); 
             canvasCtx.save(); 
-            canvasCtx.globalAlpha = alpha;
-            if (imgCoin && imgCoin.complete && imgCoin.naturalHeight > 0) {
-                canvasCtx.drawImage(imgCoin, lastEffectX + 25, floatY - 10, 50, 50);
+            if (imgCoin && imgCoin.complete) {
+                canvasCtx.drawImage(imgCoin, lastEffectX + 25, floatY, 50, 50);
             }
             canvasCtx.restore(); 
             showEffectTimer--; 
@@ -218,23 +211,25 @@ pose.onResults((results) => {
 });
 
 // ==========================================
-// 5. 流程控制 (教學 -> 倒數 -> 遊戲)
+// 5. 流程控制
 // ==========================================
 function startCountdown() {
     countdownNumber = 3;
-    statusBar.innerText = '準備倒數...';
     const timer = setInterval(() => {
-        countdownNumber--;
+        if (countdownNumber === 3) speakMsg("3");
+        else if (countdownNumber === 2) speakMsg("2");
+        else if (countdownNumber === 1) speakMsg("1");
+        
         if (countdownNumber <= 0) {
             clearInterval(timer);
             startGameLoop();
         }
+        countdownNumber--;
     }, 1000);
 }
 
 function startGameLoop() {
     score = 0; repsCount = 0; timeLeft = 15; gameActive = true;
-    minKneeAngle = 360; maxKneeAngle = 0;
     scoreElement.innerText = score;
     repsElement.innerText = repsCount;
     timeElement.innerText = timeLeft;
@@ -250,25 +245,26 @@ function startGameLoop() {
     }, 1000);
 }
 
-// 相機與 Firebase (維持原有功能)
 const camera = new Camera(videoElement, {
     onFrame: async () => { await pose.send({image: videoElement}); },
-    width: 640, height: 480, facingMode: 'user'
+    width: 640, height: 480
 });
 
 async function saveToFirebase(gameData) {
     try { await addDoc(collection(db, "squatRecords"), gameData); } 
-    catch (e) { console.error(e); }
+    catch (e) { console.error("Firebase Error:", e); }
 }
 
 function endGame() {
     gameActive = false; 
-    statusBar.innerText = '時間到！結算中...';
+    statusBar.innerText = '時間到！';
     speakMsg("時間到，正在結算成績", true);
 
     const sessionData = {
-        name: userData.name, age: userData.age, reps: repsCount,
-        minAngle: Math.round(minKneeAngle), timestamp: new Date().toISOString()
+        name: userData.name, 
+        age: userData.age, 
+        reps: repsCount,
+        timestamp: new Date().toISOString()
     };
     saveToFirebase(sessionData);
 
@@ -277,13 +273,43 @@ function endGame() {
     setTimeout(() => { switchScreen(screenResult); }, 1500);
 }
 
-// 按鈕綁定
+// ==========================================
+// 6. 按鈕事件綁定 (補齊邏輯)
+// ==========================================
+
+// 登入頁 -> 說明頁
+btnToIntro.addEventListener('click', () => {
+    if (inputName.value === "" || inputAge.value === "") {
+        alert("請輸入姓名和年齡");
+        return;
+    }
+    userData.name = inputName.value;
+    userData.age = inputAge.value;
+    switchScreen(screenIntro);
+});
+
+// 說明頁 -> 遊戲頁 (初始化鏡頭)
 btnStartGame.addEventListener('click', () => {
     switchScreen(screenGame); 
-    isTeachingMode = true; // 🚀 開啟教學模式
-    statusBar.innerText = '正在初始化鏡頭...';
+    isTeachingMode = true; 
+    statusBar.innerText = '正在開啟鏡頭，請稍候...';
+    
     if (!isCameraStarted) {
-        camera.start().then(() => { isCameraStarted = true; });
+        camera.start().then(() => {
+            isCameraStarted = true;
+            resizeCanvas();
+        }).catch(err => {
+            alert("無法開啟鏡頭：" + err);
+        });
     }
 });
-// (其他按鈕如 btnToIntro, btnPlayAgain 邏輯不變)
+
+// 再玩一次
+btnPlayAgain.addEventListener('click', () => {
+    switchScreen(screenIntro);
+});
+
+// 播放說明語音
+btnPlayInstruction.addEventListener('click', () => {
+    speakMsg("歡迎使用智慧深蹲助手。請站在相機前方，先進行一次深蹲動作教學，正確後會自動開始15秒挑戰。起身時請用力頂碎上方的磚塊來獲得金幣。", true);
+});

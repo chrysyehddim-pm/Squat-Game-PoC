@@ -1,11 +1,11 @@
 // ==========================================
-// 0. 初始化 Firebase
+// 0. 初始化 Firebase (請確保填入您的 API Key)
 // ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyB6wcFs5gSiNDCSweKcEzgRpbIAAb5I3Vo",
+    apiKey: "AIzaSyB6wcFs5gSiNDCSweKcEzgRpbIAAb5I3Vo", // 建議檢查 GCP 白名單是否包含 github.io
     authDomain: "smart-squat-health.firebaseapp.com",
     projectId: "smart-squat-health",
     storageBucket: "smart-squat-health.firebasestorage.app",
@@ -48,16 +48,16 @@ const imgCoin = document.getElementById('img-coin');
 let userData = { name: '', age: 0 }; 
 let score = 0;
 let repsCount = 0; 
-let isReadyToScore = false; 
+let isReadyToScore = false; // 嚴格重置邏輯開關
 let showEffectTimer = 0; 
-let timeLeft = 15; 
+let timeLeft = 15;          // 🚀 縮短為 15 秒
 let gameActive = false; 
-let isTeachingMode = false; 
-let countdownNumber = 0;    
+let isTeachingMode = false; // 🚀 教學模式
+let isCameraStarted = false;
+let countdownNumber = 0;    // 🚀 倒數 321 狀態
 let lastEffectX = 0;
 let minKneeAngle = 360; 
 let maxKneeAngle = 0;   
-let isCameraStarted = false; // 🚀 修正：補上此變數定義
 
 // ==========================================
 // 3. 智慧語音引擎
@@ -79,7 +79,7 @@ function speakMsg(text, forceInterrupt = false) {
 }
 
 // ==========================================
-// 4. 核心邏輯
+// 4. 核心偵測與判定邏輯
 // ==========================================
 function switchScreen(screenToShow) {
     screenLogin.classList.add('hidden');
@@ -111,9 +111,7 @@ pose.setOptions({
 });
 
 pose.onResults((results) => {
-    if (!screenGame.classList.contains('hidden')) {
-        resizeCanvas(); 
-    }
+    resizeCanvas(); 
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
     
@@ -127,32 +125,34 @@ pose.onResults((results) => {
         const ankle = results.poseLandmarks[27];
         const shoulder = results.poseLandmarks[11];
 
-        // 磚塊位置邏輯
+        // 磚塊跟隨鼻子 X 座標
         const blockWidth = 100;
         const blockHeight = 100;
         let blockX = (nose.x * canvasElement.width) - (blockWidth / 2);
         const blockY = 50; 
 
-        if (imgBrick && imgBrick.complete) {
+        // 🚀 防破圖保護機制
+        if (imgBrick && imgBrick.complete && imgBrick.naturalHeight > 0) {
             canvasCtx.drawImage(imgBrick, blockX, blockY, blockWidth, blockHeight);
         }
 
-        // --- 🚀 模式 1：教學模式 ---
+        // 模式 1：教學定位模式
         if (isTeachingMode) {
-            if (hip && knee && ankle && hip.visibility > 0.5) {
+            if (hip && knee && ankle && hip.visibility > 0.5 && ankle.visibility > 0.5) {
                 const kneeAngle = calculateAngle(hip, knee, ankle);
-                statusBar.innerText = '教學中：請先試著蹲到 110 度以下...';
-                
+                statusBar.innerText = '教學：請試著深蹲到 110 度以下...';
                 if (kneeAngle < 110) {
                     isTeachingMode = false;
-                    speakMsg("很好，準備開始", true);
+                    speakMsg("定位成功，準備開始，三... 二... 一...", true);
                     startCountdown();
                 }
+            } else {
+                statusBar.innerText = '⚠️ 請站遠一點，讓腳踝入鏡';
             }
         }
 
-        // --- 🚀 模式 2：倒數顯示 ---
-        if (!gameActive && !isTeachingMode && countdownNumber > 0) {
+        // 模式 2：視覺倒數
+        if (!gameActive && countdownNumber > 0) {
             canvasCtx.fillStyle = 'rgba(0,0,0,0.6)';
             canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.fillStyle = '#FF9800';
@@ -162,9 +162,12 @@ pose.onResults((results) => {
             canvasCtx.textAlign = 'start';
         }
 
-        // --- 🚀 模式 3：正式遊戲 ---
+        // 模式 3：正式遊戲
         if (gameActive) {
-            if (shoulder && hip && knee && ankle && hip.visibility > 0.5 && knee.visibility > 0.5) {
+            // 🚀 必須偵測到腳踝才能開始計算醫療數據，避免 0 度錯誤
+            if (shoulder && hip && knee && ankle && 
+                hip.visibility > 0.5 && knee.visibility > 0.5 && ankle.visibility > 0.5) {
+                
                 const kneeAngle = calculateAngle(hip, knee, ankle);
                 const hipAngle = calculateAngle(shoulder, hip, knee);
                 const noseCanvasY = nose.y * canvasElement.height;
@@ -175,34 +178,46 @@ pose.onResults((results) => {
                     noseCanvasY > blockY && noseCanvasY < blockY + blockHeight
                 );
 
+                // 記錄合理的醫療角度數據
+                if (kneeAngle >= 40 && kneeAngle <= 180) {
+                    if (kneeAngle < minKneeAngle) minKneeAngle = kneeAngle;
+                    if (kneeAngle > maxKneeAngle) maxKneeAngle = kneeAngle;
+                }
+                
+                // 狀態鎖定：必須先蹲到位
                 if (kneeAngle < 110 && hipAngle < 130 && !isReadyToScore) {
                     isReadyToScore = true;
-                    statusBar.innerText = '到位了！起立頂磚塊！';
+                    statusBar.innerText = '到位！起立頂磚塊！';
                     speakMsg("蹲得好，請起立"); 
                 }
                 
+                // 起身且碰撞判定：解決微蹲得分 Bug
                 if (kneeAngle > 155 && isTouchingBrick && isReadyToScore) {
                     isReadyToScore = false; 
                     repsCount++;
                     score += 10;
                     scoreElement.innerText = score;
                     repsElement.innerText = repsCount;
-                    statusBar.innerText = '✨ 得分！請再蹲一次！';
+                    statusBar.innerText = '✨ 完美！再蹲一次！';
                     lastEffectX = blockX; 
                     showEffectTimer = 40; 
                     speakMsg("得分", true); 
-                    if (kneeAngle < minKneeAngle) minKneeAngle = kneeAngle;
                 }
+            } else {
+                statusBar.innerText = '⚠️ 偵測不到腳踝，請退後！';
             }
         }
 
-        // 金幣動畫
+        // 金幣噴發特效
         if (showEffectTimer > 0) {
             const progress = 1 - (showEffectTimer / 40); 
-            const floatY = blockY - (progress * 100); 
+            const easeOut = Math.sin(progress * Math.PI / 2);
+            const floatY = blockY - (easeOut * 80); 
+            const alpha = showEffectTimer < 10 ? (showEffectTimer / 10) : 1;
             canvasCtx.save(); 
-            if (imgCoin && imgCoin.complete) {
-                canvasCtx.drawImage(imgCoin, lastEffectX + 25, floatY, 50, 50);
+            canvasCtx.globalAlpha = alpha;
+            if (imgCoin && imgCoin.complete && imgCoin.naturalHeight > 0) {
+                canvasCtx.drawImage(imgCoin, lastEffectX + 25, floatY - 10, 50, 50);
             }
             canvasCtx.restore(); 
             showEffectTimer--; 
@@ -211,29 +226,31 @@ pose.onResults((results) => {
 });
 
 // ==========================================
-// 5. 流程控制
+// 5. 流程與 Firebase 數據控制
 // ==========================================
+const camera = new Camera(videoElement, {
+    onFrame: async () => { await pose.send({image: videoElement}); },
+    width: 640, height: 480, facingMode: 'user'
+});
+
 function startCountdown() {
     countdownNumber = 3;
     const timer = setInterval(() => {
-        if (countdownNumber === 3) speakMsg("3");
-        else if (countdownNumber === 2) speakMsg("2");
-        else if (countdownNumber === 1) speakMsg("1");
-        
+        countdownNumber--;
         if (countdownNumber <= 0) {
             clearInterval(timer);
             startGameLoop();
         }
-        countdownNumber--;
     }, 1000);
 }
 
 function startGameLoop() {
     score = 0; repsCount = 0; timeLeft = 15; gameActive = true;
+    minKneeAngle = 360; maxKneeAngle = 0;
     scoreElement.innerText = score;
     repsElement.innerText = repsCount;
     timeElement.innerText = timeLeft;
-    statusBar.innerText = '🔥 遊戲開始！';
+    statusBar.innerText = '🔥 遊戲開始！加油！';
     
     const gameTimer = setInterval(() => {
         timeLeft--;
@@ -245,71 +262,73 @@ function startGameLoop() {
     }, 1000);
 }
 
-const camera = new Camera(videoElement, {
-    onFrame: async () => { await pose.send({image: videoElement}); },
-    width: 640, height: 480
-});
-
 async function saveToFirebase(gameData) {
     try { await addDoc(collection(db, "squatRecords"), gameData); } 
-    catch (e) { console.error("Firebase Error:", e); }
+    catch (e) { console.error("Firebase 寫入失敗: ", e); }
 }
 
 function endGame() {
     gameActive = false; 
-    statusBar.innerText = '時間到！';
-    speakMsg("時間到，正在結算成績", true);
+    statusBar.innerText = '時間到！結算中...';
+    speakMsg("時間到，辛苦了", true);
+
+    let finalMin = minKneeAngle === 360 ? 0 : Math.round(minKneeAngle);
+    let finalMax = Math.round(maxKneeAngle);
+    let avgTime = repsCount > 0 ? (15 / repsCount).toFixed(1) : 0;
 
     const sessionData = {
-        name: userData.name, 
-        age: userData.age, 
-        reps: repsCount,
-        timestamp: new Date().toISOString()
+        name: userData.name, age: userData.age, reps: repsCount,
+        score: score, minAngle: finalMin, maxAngle: finalMax,
+        avgTime: avgTime, timestamp: new Date().toISOString()
     };
     saveToFirebase(sessionData);
 
+    // 🚀 更新結算畫面 UI，解決數據顯示不出來的問題
     document.getElementById('result-name').innerText = `${userData.name} (${userData.age}歲)`;
     document.getElementById('result-reps').innerText = repsCount;
+    document.getElementById('result-score').innerText = score;
+    document.getElementById('result-min-angle').innerText = finalMin + "°";
+    document.getElementById('result-max-angle').innerText = finalMax + "°";
+    document.getElementById('result-avg-time').innerText = avgTime + " 秒";
+    
     setTimeout(() => { switchScreen(screenResult); }, 1500);
 }
 
 // ==========================================
-// 6. 按鈕事件綁定 (補齊邏輯)
+// 6. 按鈕事件綁定 (修復下一步失效問題)
 // ==========================================
 
-// 登入頁 -> 說明頁
+// 下一步：填寫資料並前往說明
 btnToIntro.addEventListener('click', () => {
-    if (inputName.value === "" || inputAge.value === "") {
-        alert("請輸入姓名和年齡");
+    const nameVal = inputName.value.trim();
+    const ageVal = inputAge.value.trim();
+    if (!nameVal || !ageVal) {
+        alert("請輸入姓名與年齡，才能幫您記錄成績喔！");
         return;
     }
-    userData.name = inputName.value;
-    userData.age = inputAge.value;
+    userData.name = nameVal;
+    userData.age = parseInt(ageVal);
     switchScreen(screenIntro);
 });
 
-// 說明頁 -> 遊戲頁 (初始化鏡頭)
+// 播放語音說明
+btnPlayInstruction.addEventListener('click', () => {
+    speakMsg("遊戲說明：請退後至全身入鏡。先深蹲一次進行定位，接著在十五秒內，移動身體頂破移動中的問號磚塊！", true);
+});
+
+// 開始挑戰：初始化相機
 btnStartGame.addEventListener('click', () => {
     switchScreen(screenGame); 
     isTeachingMode = true; 
-    statusBar.innerText = '正在開啟鏡頭，請稍候...';
-    
+    statusBar.innerText = '正在連線鏡頭，請退後...';
     if (!isCameraStarted) {
-        camera.start().then(() => {
-            isCameraStarted = true;
-            resizeCanvas();
-        }).catch(err => {
-            alert("無法開啟鏡頭：" + err);
-        });
+        camera.start().then(() => { isCameraStarted = true; });
     }
 });
 
-// 再玩一次
+// 再挑戰一次
 btnPlayAgain.addEventListener('click', () => {
-    switchScreen(screenIntro);
-});
-
-// 播放說明語音
-btnPlayInstruction.addEventListener('click', () => {
-    speakMsg("歡迎使用智慧深蹲助手。請站在相機前方，先進行一次深蹲動作教學，正確後會自動開始15秒挑戰。起身時請用力頂碎上方的磚塊來獲得金幣。", true);
+    switchScreen(screenGame);
+    isTeachingMode = true; 
+    statusBar.innerText = '請先完成深蹲定位...';
 });

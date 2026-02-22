@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>金幣深蹲王 - AR 互動挑戰</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="container">
+      
+      <div id="screen-login" class="screen active">
+          <h1>🏆 金幣深蹲王</h1>
+          <p class="subtitle">健康挑戰等您參與</p>
+          <div class="form-group">
+              <label for="userName">姓名 / 暱稱</label>
+              <input type="text" id="userName" placeholder="請輸入姓名">
+          </div>
+          <div class="form-group">
+              <label for="userAge">年齡</label>
+              <input type="number" id="userAge" placeholder="請輸入年齡">
+          </div>
+          <button id="btn-to-intro" class="primary-btn">下一步</button>
+      </div>
+
+      <div id="screen-intro" class="screen hidden">
+        <h2>遊戲說明 📖</h2>
+        <div class="instruction-box">
+            <p>1. 將手機或平板架好，退後至全身入鏡。</p>
+            <p>2. 聽到提示音後開始深蹲。</p>
+            <p>3. 蹲下再站起，用頭頂破上方磚塊收集金幣！</p>
+            <button id="btn-play-instruction" class="secondary-btn" style="margin-top: 10px; font-size: 1rem; padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer;">🔊 播放語音說明</button>
+        </div>
+        <button id="btn-start-game" class="primary-btn">我準備好了，開始連線鏡頭</button>
+    </div>
+
+      <div id="screen-game" class="screen hidden">
+          <div id="game-ui-bar">
+              <div class="stat">⏱️ <span id="time">30</span>s</div>
+              <div class="stat">🪙 <span id="score">0</span></div>
+              <div class="stat">🏃 <span id="reps">0</span> 下</div>
+          </div>
+          <div class="video-container">
+              <video id="input_video" style="display: none;"></video>
+              <canvas id="output_canvas"></canvas>
+              <img id="img-brick" src="images/block.png" style="display:none;">
+              <img id="img-coin" src="images/coin.png" style="display:none;">
+          </div>
+          <div id="status-bar">正在開啟鏡頭...</div>
+      </div>
+
+      <div id="screen-result" class="screen hidden">
+        <h2>🎉 挑戰完成！</h2>
+        <div class="result-card">
+            <h3 id="result-name">使用者名稱</h3>
+            <h1 id="result-title">傳說級深蹲王 👑</h1>
+            <p>總共完成：<span id="result-reps" class="highlight">0</span> 下</p>
+            <p>獲得金幣：<span id="result-score" class="highlight">0</span> 枚</p>
+            
+            <hr style="border: 0.5px solid #eee; margin: 15px 0;">
+            
+            <div style="font-size: 1rem; color: #555; text-align: left;">
+                <p>📊 <b>健康數據分析：</b></p>
+                <p>最深彎曲角度：<span id="result-min-angle">0</span>°</p>
+                <p>站立伸直角度：<span id="result-max-angle">0</span>°</p>
+                <p>平均單次耗時：<span id="result-avg-time">0</span> 秒</p>
+            </div>
+        </div>
+        <button id="btn-play-again" class="primary-btn">再挑戰一次</button>
+    </div>
+
+  </div>
+  <script type="module" src="script.js"></script>
+</body>
+</html>
